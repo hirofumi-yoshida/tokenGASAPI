@@ -128,12 +128,6 @@ function deleteRows(sheet, headerRowNum, idColomnNum, jsonMessage){
 
 
 
-//スクリプトプロパティに保存されているデータをまとめて取得
-//p = {folderid,glitchURL,email}
-//
-const scriptProperties = PropertiesService.getScriptProperties();
-const p = scriptProperties.getProperties();
-
 
 //5分おきにこの関数を実行するように時限トリガーを設定
 const retainGlitch = () => {
@@ -154,36 +148,48 @@ const retainGlitch = () => {
 }
 
 
-
 ///////////////////////////
-///キャンセルに対応、Email,URL
-
-function initialSettings(){
+///初期設定
+function initialSettings(p){
   if (!p.folderId) {
-    //スプレッドシートのIDからフォルダのIDを取得、保存用のフォルダを作成
-    const currentFolder = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId()).getParents().next();
-    const newFolder = currentFolder.createFolder("CSV-LOG");
-    const newFolderId = newFolder.getId();
-    //スクリプトプロパティに保存フォルダIDを保存
-    scriptProperties.setProperty('folderId', newFolderId);
+    p.folderId = makeFolder();
   }
   if (!p.glitchURL) {
-    const newGlitchURL = Browser.inputBox("常時起動するGlitchのURLを入力してください。");
-    scriptProperties.setProperty('glitchURL', newGlitchURL);
+    p.glitchURL = saveScriptProperty("常時起動するGlitchのURLを入力してください","glitchURL");
   }
   if (!p.email) {
-    saveEmailToScriptProperty();
+    p.email = saveScriptProperty("CSVデータを送信するメールアドレスを入力してください","email");
   }
 }
 
-//メールアドレスの登録・変更
-function saveEmailToScriptProperty() {
-  const newEmail = Browser.inputBox("CSVデータを送信するメールアドレスを入力してください。");
-  scriptProperties.setProperty('email', newEmail);
+//CSVの保存フォルダの作成
+function makeFolder(){
+  //スプレッドシートのIDからフォルダのIDを取得、保存用のフォルダを作成
+  const currentFolder = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId()).getParents().next();
+  const newFolder = currentFolder.createFolder("CSV-LOG");
+  const newFolderId = newFolder.getId();
+  //スクリプトプロパティに保存フォルダIDを保存
+  PropertiesService.getScriptProperties().setProperty('folderId', newFolderId);
+  return newFolderId;
 }
 
+//プロパティの登録・変更
+function saveScriptProperty(prompt,property) {
+  const newProperty = Browser.inputBox(prompt);
+  if(newProperty === "cancel"){
+    return;
+  }
+  PropertiesService.getScriptProperties().setProperty(property, newProperty);
+  return newProperty;
+}
 
+//ThirdWEBへアップロードするCSVファイルの作成
 function issueTokenCSV(){
+  //スクリプトプロパティに保存されているデータをまとめて取得
+  //p = {folderid,glitchURL,email}
+  const p = PropertiesService.getScriptProperties().getProperties();
+  initialSettings(p); //初期設定
+  
   let spsheet = SpreadsheetApp.getActiveSpreadsheet()
   const issueTokenSheet = spsheet.getSheetByName("issue-token");
   const issueLogSheet = spsheet.getSheetByName("issue-log");
@@ -224,10 +230,14 @@ function issueTokenCSV(){
   tokenList.forEach(token => {
     csv += `${token.walletAddress},${token.token}\r\n`;
   });
-  sendCsvToMail(csv);
+  sendCsvToMail(csv,p);
   
   //issue-tokenシートからissue-logシートへ移動
-  issueLogSheet.getRange(issueLogDatas.length+1,1,sheetDatas.length,sheetDatas[0].length).setValues(sheetDatas);
+  try{
+    issueLogSheet.getRange(issueLogDatas.length+1,1,sheetDatas.length,sheetDatas[0].length).setValues(sheetDatas);
+    }catch{
+      Browser.msgBox("トークンが発行されていません");
+    }  
   //issue-tokenシートをクリア
   issueTokenSheet.getRange(2,1,sheetDatas.length+1,sheetDatas[0].length).clearContent();
 }
@@ -235,23 +245,29 @@ function issueTokenCSV(){
 
 
 //指定のGoogleドライブフォルダへ保存
-function saveToDrive(csv,fileName) {
+function saveToDrive(csv,fileName,p) {
   var file = DriveApp.createFile(fileName, csv, MimeType.CSV);
-  console.log(p.folderId);
-  var folder = DriveApp.getFolderById(p.folderId);
+  let folder;
+  try{
+    folder = DriveApp.getFolderById(p.folderId);
+    }catch(e){
+      console.log("フォルダ作成")
+      folder = DriveApp.getFolderById(makeFolder());
+    }
+
   folder.addFile(file);
   var fileId = file.getId();
   return fileId;
 }
 
 //CSVファイルをメール送信
-function sendCsvToMail(csv) {
+function sendCsvToMail(csv,p) {
   var outputdate = new Date();　　//CSVファイルの作成日を今日の日付で取得
   outputdate = Utilities.formatDate(outputdate,"JST","yyyy/MM/dd");
   const fileName = `${outputdate}.csv` 
 
   // CSVファイルをGoogle Driveに保存
-  saveToDrive(csv,fileName);
+  saveToDrive(csv,fileName,p);
 
   //メール添付用にblob作成
   var blob = Utilities.newBlob("", 'text/comma-separated-values', fileName);
