@@ -132,6 +132,7 @@ function deleteRows(sheet, headerRowNum, idColomnNum, jsonMessage){
 //5分おきにこの関数を実行するように時限トリガーを設定
 const retainGlitch = () => {
   //あらかじめ設定しておいたプロパティを呼び出す
+  const p = PropertiesService.getScriptProperties().getProperties();
   const glitchURL = p.glitchURL;
 
   const data = {}
@@ -230,19 +231,20 @@ function issueTokenCSV(){
   tokenList.forEach(token => {
     csv += `${token.walletAddress},${token.token}\r\n`;
   });
-  sendCsvToMail(csv,p);
-  
+  //CSVの長さで判定
+  if(csv.length>22){//見出しのみの長さが21
+    sendCsvToMail(csv,p);
+    Browser.msgBox("申請されていたトークンを認証しました");
+  }else{
+    //申請されているデータがないなら終了
+    Browser.msgBox("トークンが申請されていません");
+    return;
+  }
   //issue-tokenシートからissue-logシートへ移動
-  try{
-    issueLogSheet.getRange(issueLogDatas.length+1,1,sheetDatas.length,sheetDatas[0].length).setValues(sheetDatas);
-    }catch{
-      Browser.msgBox("トークンが発行されていません");
-    }  
+  issueLogSheet.getRange(issueLogDatas.length+1,1,sheetDatas.length,sheetDatas[0].length).setValues(sheetDatas);
   //issue-tokenシートをクリア
   issueTokenSheet.getRange(2,1,sheetDatas.length+1,sheetDatas[0].length).clearContent();
 }
-
-
 
 //指定のGoogleドライブフォルダへ保存
 function saveToDrive(csv,fileName,p) {
@@ -254,7 +256,6 @@ function saveToDrive(csv,fileName,p) {
       console.log("フォルダ作成")
       folder = DriveApp.getFolderById(makeFolder());
     }
-
   folder.addFile(file);
   var fileId = file.getId();
   return fileId;
