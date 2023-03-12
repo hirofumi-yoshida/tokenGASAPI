@@ -127,7 +127,8 @@ function deleteRows(sheet, headerRowNum, idColomnNum, jsonMessage){
 }
 
 
-
+/////////////////////////////////
+/////////////////////////////////
 
 //5分おきにこの関数を実行するように時限トリガーを設定
 const retainGlitch = () => {
@@ -152,6 +153,24 @@ const retainGlitch = () => {
 ///////////////////////////
 ///初期設定
 function initialSettings(p){
+  const functionName = 'retainGlitch';
+  const triggers = ScriptApp.getProjectTriggers();
+  console.log(triggers);
+
+  // Check if trigger already exists using map function
+  var triggerExists = triggers.map(function(trigger) {
+    return (trigger.getHandlerFunction() === functionName);
+  }).indexOf(true) !== -1;
+
+  // If trigger does not exist, create new trigger
+  if (!triggerExists) {
+    ScriptApp.newTrigger(functionName)
+      .timeBased()
+      .everyMinutes(5)
+      .create();
+      Browser.msgBox("Glitch常時起動のためのトリガーを設定しました");
+  }
+
   if (!p.folderId) {
     p.folderId = makeFolder();
   }
