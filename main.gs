@@ -1,6 +1,6 @@
 /*
 {
-    "action": "insert", //シートの操作、追加:"insert",削除:"delete",変更:"replace",トークン発行:"issue"
+    "action": "insert", //シートの操作、追加:"insert",削除:"delete",変更:"replace"
     "sheetName": "issue-token", //使用するシートの名前
     "rows": [
         {messageID: "1070596170981843004", //トークン付与されたDiscordメッセージのID
@@ -16,6 +16,25 @@ function doPost(e){
   let output = ContentService.createTextOutput();
   output.setMimeType(ContentService.MimeType.JSON);
   output.setContent(JSON.stringify({ message: "success" }));
+  return output;
+}
+
+function doGet(e){
+  let spsheet = SpreadsheetApp.getActiveSpreadsheet()
+  const issueTokenSheet = spsheet.getSheetByName("issue-token");
+  const issuerTableDatas = spsheet.getSheetByName("issuer-table").getDataRange().getValues();
+  let sheetDatas = issueTokenSheet.getDataRange().getValues();
+  
+  //検索しやすいように発行元シートのデータをオブジェクトの配列に変換
+  const issueDatas = array2Object(sheetDatas);
+  const objIssuerDatas = array2Object(issuerTableDatas);
+
+  //発行者IDが登録されているもののみユーザーごとにトークンを加算
+  const tokens = calcTokenName(issueDatas,objIssuerDatas);
+
+  let output = ContentService.createTextOutput();
+  output.setMimeType(ContentService.MimeType.JSON);
+  output.setContent(JSON.stringify(tokens));
   return output;
 }
 
@@ -153,6 +172,23 @@ const retainGlitch = () => {
 ///////////////////////////
 ///初期設定
 function initialSettings(p){
+
+  //トリガーの設定
+  makeTrigger();
+
+  if (!p.folderId) {
+    p.folderId = makeFolder();
+  }
+  if (!p.glitchURL) {
+    p.glitchURL = saveScriptProperty("常時起動するGlitchのURLを入力してください","glitchURL");
+  }
+  if (!p.email) {
+    p.email = saveScriptProperty("CSVデータを送信するメールアドレスを入力してください","email");
+  }
+}
+
+//Glitch常時起動のための5分おきのトリガーを作成
+function makeTrigger(){
   const functionName = 'retainGlitch';
   const triggers = ScriptApp.getProjectTriggers();
   console.log(triggers);
@@ -169,16 +205,6 @@ function initialSettings(p){
       .everyMinutes(5)
       .create();
       Browser.msgBox("Glitch常時起動のためのトリガーを設定しました");
-  }
-
-  if (!p.folderId) {
-    p.folderId = makeFolder();
-  }
-  if (!p.glitchURL) {
-    p.glitchURL = saveScriptProperty("常時起動するGlitchのURLを入力してください","glitchURL");
-  }
-  if (!p.email) {
-    p.email = saveScriptProperty("CSVデータを送信するメールアドレスを入力してください","email");
   }
 }
 
@@ -228,16 +254,7 @@ function issueTokenCSV(){
   objAddlessDatas.forEach(user => userWallets[user.userID] = user.walletAddress);
 
   //発行者IDが登録されているもののみユーザーごとにトークンを加算
-  const tokens = {};  
-  issueDatas
-    .filter(message => objIssuerDatas.some(issuer => issuer.issuerID === message.issuerID))
-    .forEach(message => {
-      const userID = message.userID;
-      if (tokens[userID] === undefined) {
-        tokens[userID] = 0;
-      }
-      tokens[userID] += message.issue;
-    });
+  const tokens = calcToken(issueDatas,objIssuerDatas); 
 
   const tokenList = Object.keys(tokens).map(userID => ({
     walletAddress: userWallets[userID],
@@ -245,6 +262,7 @@ function issueTokenCSV(){
   }));
   
   console.log(tokenList);
+
   //出力するCSVに見出しを設定、最後は改行
   let csv = 'walletAddless,token\r\n';
   tokenList.forEach(token => {
@@ -264,6 +282,37 @@ function issueTokenCSV(){
   //issue-tokenシートをクリア
   issueTokenSheet.getRange(2,1,sheetDatas.length+1,sheetDatas[0].length).clearContent();
 }
+
+//発行者IDが登録されているもののみユーザーごとにトークンを加算
+function calcToken(issueDatas,objIssuerDatas){
+  const tokens = {};  
+  issueDatas
+    .filter(message => objIssuerDatas.some(issuer => issuer.issuerID === message.issuerID))
+    .forEach(message => {
+      const userID = message.userID;
+      if (tokens[userID] === undefined) {
+        tokens[userID] = 0;
+      }
+      tokens[userID] += message.issue;
+    });
+  return tokens;
+}
+
+//発行者IDが登録されているもののみユーザーごとにトークンを加算
+function calcTokenName(issueDatas,objIssuerDatas){
+  const tokens = {};  
+  issueDatas
+    .filter(message => objIssuerDatas.some(issuer => issuer.issuerID === message.issuerID))
+    .forEach(message => {
+      const userName = message.userName;
+      if (tokens[userName] === undefined) {
+        tokens[userName] = 0;
+      }
+      tokens[userName] += message.issue;
+    });
+  return tokens;
+}
+
 
 //指定のGoogleドライブフォルダへ保存
 function saveToDrive(csv,fileName,p) {
