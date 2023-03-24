@@ -165,17 +165,16 @@ const retainGlitch = () => {
   }
   //特に中身のないデータをGlitchへPOST
   const response = UrlFetchApp.fetch(glitchURL, params);
-
   
-  // レスポンスがなかった場合にメールでお知らせする
-  if (!response) {
+  try {
+    console.log(JSON.parse(response));
+  } catch(e) {
+    console.log("on");
     const recipient = p.email;
     const subject = "Metagri_Thanks_BOT停止アラート";
     const body = "Metagri_Thanks_BOTが停止しています。\nGlitchから再度Botを起動してください。";
-    GmailApp.sendEmail(recipient, subject, body);
+    //GmailApp.sendEmail(recipient, subject, body);
   }
-  
-  console.log(response);
 }
 
 
